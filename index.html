@@ -109,6 +109,7 @@ function pickFor(b,taken){
 
 
 /* ---------- audio ---------- */
+let evolveTimer=null;
 let ctx=null, bus, shaper, hp, peak, lp, wowG, flutG, hissG;
 const bufs=new Map();
 function initAudio(){
@@ -144,7 +145,7 @@ function initAudio(){
   const bedG=ctx.createGain(); bedG.gain.value=.05;
   bed.connect(bedF).connect(bedG).connect(lp); bed.start();
   boxes.forEach((b,i)=>{ b.out=ctx.createGain(); b.out.gain.value=b.muted?0:b.vol*b.vol; b.swell=ctx.createGain(); b.out.connect(b.swell).connect(bus); setSwell(b,i); });
-  setInterval(evolve,4000);
+  clearInterval(evolveTimer); evolveTimer=setInterval(evolve,4000);
   applyAge();
 }
 function applyAge(){
@@ -299,13 +300,49 @@ function gira(){
 }
 gira();
 $("#gira").onclick=gira;
-async function toggle(){
+/* ---------- waking the audio after a screen lock ----------
+   phones can leave the audio context stuck after the screen goes off: resume() never answers and play stays dead until a reload.
+   So we try to resume for a moment, and if it doesn't come back we throw the context away and build a fresh one. */
+const resumeSoon=(c,ms)=>Promise.race([c.resume().then(()=>true,()=>false),new Promise(r=>setTimeout(()=>r(false),ms))]);
+async function wakeCtx(){
   if(!ctx) initAudio();
-  if(ctx.state==="suspended") await ctx.resume();
-  state.on=!state.on;
-  $("#play").setAttribute("aria-pressed",state.on); $("#play").setAttribute("aria-label",state.on?"Stop":"Play");
-  if(state.on) playAll(); else boxes.forEach(b=>{ stopVoice(b.voice,1); b.voice=null; });
+  if(ctx.state==="running") return true;
+  if(ctx.state!=="closed" && await resumeSoon(ctx,400) && ctx.state==="running") return true;
+  boxes.forEach(b=>{ b.voice=null; });
+  const old=ctx; ctx=null; old.close().catch(()=>{}); initAudio();
+  await resumeSoon(ctx,800); return ctx.state==="running";
 }
+/* a silent media element keeps the audio session alive on phones, so deriva goes on with the screen off */
+const au=new Audio(); au.loop=true; au.setAttribute("playsinline","");
+au.src=(()=>{const n=4410,b=new ArrayBuffer(44+n*2),v=new DataView(b);let o=0;
+  const s=t=>{for(let i=0;i<t.length;i++)v.setUint8(o++,t.charCodeAt(i))},u32=x=>{v.setUint32(o,x,true);o+=4},u16=x=>{v.setUint16(o,x,true);o+=2};
+  s("RIFF");u32(36+n*2);s("WAVE");s("fmt ");u32(16);u16(1);u16(1);u32(44100);u32(88200);u16(2);u16(16);s("data");u32(n*2);
+  return URL.createObjectURL(new Blob([b],{type:"audio/wav"}))})();
+function setOn(on){
+  state.on=on;
+  $("#play").setAttribute("aria-pressed",on); $("#play").setAttribute("aria-label",on?"Stop":"Play");
+  if(on){ au.volume=.01; au.play().catch(()=>{}); } else au.pause();
+  try{ navigator.mediaSession.playbackState=on?"playing":"paused"; }catch(e){}
+}
+async function toggle(){
+  if(state.on){ setOn(false); boxes.forEach(b=>{ stopVoice(b.voice,1); b.voice=null; }); return; }
+  try{ if(navigator.audioSession) navigator.audioSession.type="playback"; }catch(e){}
+  if(!await wakeCtx()) return;
+  setOn(true); playAll();
+  if("mediaSession" in navigator){ try{
+    navigator.mediaSession.metadata=new MediaMetadata({title:"deriva",artist:"suoni che si perdono"});
+    navigator.mediaSession.setActionHandler("play",()=>{ if(!state.on) toggle(); });
+    navigator.mediaSession.setActionHandler("pause",()=>{ if(state.on) toggle(); });
+    navigator.mediaSession.setActionHandler("stop",()=>{ if(state.on) toggle(); });
+  }catch(e){} }
+}
+/* back from a locked screen: if the sound came back, carry on; if it's stuck, show play again so one tap rebuilds it */
+async function onReturn(){
+  if(document.hidden||!state.on||!ctx||ctx.state==="running") return;
+  if(await resumeSoon(ctx,400) && ctx.state==="running") return;
+  setOn(false); boxes.forEach(b=>{ b.voice=null; });
+}
+document.addEventListener("visibilitychange",onReturn); addEventListener("pageshow",onReturn); addEventListener("focus",onReturn);
 $("#play").onclick=toggle;
 $("#cv").onclick=toggle;
 

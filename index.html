@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="deriva: a Buddha Machine for the browser. Five loops in your key leave together and slowly drift apart.">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>deriva</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500&display=swap">
+<style>
+/* Layout: one quiet column, like sempre and lamiera. The dial is the instrument: notes on the rim, five loops as rings, tap the centre to play */
+:root{
+  --bg:#02040F; --ink:#E5DADA; --mute:#968E96; --line:#152139; --amber:#E59500; --wine:#D2577F; --night:#4A8CC4;
+  --font:"Helvetica Neue","IBM Plex Sans",Helvetica,Arial,sans-serif;
+  color-scheme:dark;
+}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--font);font-weight:400;font-size:16px;line-height:1.4;font-variant-numeric:tabular-nums;
+  padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));padding-block:16px 120px}
+.wrap{max-width:540px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}
+button:focus-visible{outline:1px solid var(--amber);outline-offset:3px}
+
+header{display:flex;justify-content:space-between;align-items:baseline}
+h1{font-weight:300;font-size:1.5rem;letter-spacing:-.01em;margin:0}
+.titleblock{display:flex;flex-direction:column;gap:2px}
+.tag{font-size:.78rem;color:var(--mute);letter-spacing:.02em}
+#gira{color:var(--mute);font-size:.95rem;display:flex;gap:6px;align-items:baseline}
+#gira:hover{color:var(--ink)}
+#gira.spun{color:var(--amber)}
+
+.stage{width:100%;max-width:min(100%,62vh);aspect-ratio:1;margin:0 auto;position:relative}
+.stage canvas{display:block;width:100%;height:100%;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.note{position:absolute;transform:translate(-50%,-50%);font-size:.92rem;color:var(--ink);opacity:.5;padding:8px 6px;line-height:1}
+.note:hover{opacity:.85}
+.note[aria-pressed="true"]{opacity:1;color:var(--amber)}
+.note[aria-pressed="true"]::after{content:"";position:absolute;left:6px;right:6px;bottom:3px;height:1px;background:var(--amber)}
+
+.cap{display:flex;flex-direction:column;align-items:center;gap:2px;margin-top:-6px;text-align:center}
+#nowA{font-weight:300;font-size:1.9rem;letter-spacing:-.02em}
+#nowB{color:var(--mute);font-size:.92rem;text-transform:lowercase;min-height:1.3em}
+.hint{font-size:.88rem;color:var(--mute);margin:0 auto;max-width:44ch;text-align:center}
+.hint b{font-weight:400;color:var(--ink)}
+
+.play{position:fixed;right:max(20px,calc(env(safe-area-inset-right,0px) + 20px));bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:5;
+  width:58px;height:58px;border-radius:50%;background:var(--amber);color:var(--bg);display:grid;place-items:center}
+.play svg{width:20px;height:20px}
+.play .ic-stop{display:none}
+.play[aria-pressed="true"]{background:var(--bg);color:var(--amber);box-shadow:inset 0 0 0 1px var(--amber)}
+.play[aria-pressed="true"] .ic-play{display:none}
+.play[aria-pressed="true"] .ic-stop{display:block}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="titleblock"><h1>deriva</h1><span class="tag">suoni che si perdono</span></div>
+    <button id="gira" aria-label="New sounds, starting together">ancòra</button>
+  </header>
+  <div>
+    <div class="stage" id="stage"><canvas id="cv" aria-label="Tap to play or stop"></canvas></div>
+    <div class="cap"><span id="nowA">d</span><span id="nowB"></span></div>
+  </div>
+  <p class="hint">Tap a note on the rim to set the key. <b>ancòra</b> casts five new loops: they leave together and slowly drift apart. Each one breathes at its own pace, and every few minutes one of them quietly changes.</p>
+</div>
+<button class="play" id="play" aria-pressed="false" aria-label="Play">
+  <svg class="ic-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>
+  <svg class="ic-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+</button>
+
+<script>
+const CAT = [{"id":"s001","nome":"Trance Intro","fam":"ambient","dur":29,"root":"D","cents":-2.2,"note":["D","G","A"],"da":"envirOmaniac2"},{"id":"s002","nome":"Ambient Atmos Space Pad","fam":"ambient","dur":5,"root":"F","cents":8.4,"note":["F"],"da":"mooncubedesign"},{"id":"s003","nome":"Spaceship Pads Chord Progression","fam":"ambient","dur":11,"root":"D","cents":1.2,"note":["D","G","A","B","C"],"da":"f-r-a-g-i-l-e"},{"id":"s005","nome":"Rise Pad 100 bpm","fam":"ambient","dur":29,"root":"G#","cents":5.2,"note":["G#","C#","E"],"da":"Johnnie_Holiday"},{"id":"s008","nome":"Ambient Low Frequency Drum Loop Sounds","fam":"ambient","dur":23,"root":"G#","cents":-3.9,"note":["G#"],"da":"bassimat"},{"id":"s009","nome":"Harmonium D3","fam":"armonium","dur":5,"root":"D","cents":7.3,"note":["D","A","F#"],"da":"cabled_mess"},{"id":"s010","nome":"Harmonium C3","fam":"armonium","dur":5,"root":"C#","cents":2.9,"note":["C#","G#"],"da":"cabled_mess"},{"id":"s011","nome":"Harmonium C3","fam":"armonium","dur":7,"root":"C","cents":4.5,"note":["C","G","E"],"da":"cabled_mess"},{"id":"s012","nome":"Harmonium F3","fam":"armonium","dur":5,"root":"F","cents":5.3,"note":["F","C","A"],"da":"cabled_mess"},{"id":"s013","nome":"Harmonium G4","fam":"armonium","dur":5,"root":"G#","cents":8,"note":["G#","D#","C"],"da":"cabled_mess"},{"id":"s014","nome":"Harmonium G3","fam":"armonium","dur":7,"root":"G#","cents":5.5,"note":["G#","D#"],"da":"cabled_mess"},{"id":"s015","nome":"Harmonium G3","fam":"armonium","dur":7,"root":"G","cents":6.4,"note":["G","D","B"],"da":"cabled_mess"},{"id":"s016","nome":"90 G WobbleHarmoniumText 01","fam":"armonium","dur":7,"root":"C","cents":1.7,"note":["C","G","A","F"],"da":"oceansonmars"},{"id":"s018","nome":"Bell Meditation","fam":"campane","dur":23,"root":"C","cents":46,"note":["C","C#","E"],"da":"fauxpress"},{"id":"s019","nome":"Three Short Bell Rings","fam":"campane","dur":3,"root":"C","cents":-22.8,"note":["C","F"],"da":"el_boss"},{"id":"s020","nome":"BELLHand Ringing Small Hand Bell HvD O","fam":"campane","dur":3,"root":"C","cents":33.1,"note":["C","C#"],"da":"Hano_van_Dalen"},{"id":"s022","nome":"Short Church Bell Ring with Rural Ambi","fam":"campane","dur":19,"root":"F","cents":32.5,"note":["F","E","B"],"da":"TSP-Talk"},{"id":"s023","nome":"Resonant Bells","fam":"campane","dur":7,"root":"G","cents":-25.1,"note":["G","C#"],"da":"steprock"},{"id":"s024","nome":"Bell Sound","fam":"campane","dur":13,"root":"C","cents":20.6,"note":["C"],"da":"Seth_Makes_Sounds"},{"id":"s025","nome":"Singing bowl high and very quiet","fam":"ciotole","dur":13,"root":"G#","cents":40.9,"note":["G#"],"da":"eliasheuninck"},{"id":"s026","nome":"Singing bowl high and loud","fam":"ciotole","dur":23,"root":"G#","cents":39.3,"note":["G#","D"],"da":"eliasheuninck"},{"id":"s027","nome":"singing bowl single strike 1","fam":"ciotole","dur":29,"root":"C","cents":-21.9,"note":["C","F#"],"da":"s-light"},{"id":"s028","nome":"singing bowl single strike 3","fam":"ciotole","dur":19,"root":"F#","cents":-18.5,"note":["F#","C","B"],"da":"s-light"},{"id":"s029","nome":"singing bowl single strike 2","fam":"ciotole","dur":29,"root":"C","cents":-23.2,"note":["C","F#"],"da":"s-light"},{"id":"s030","nome":"singing bowl single strike 7","fam":"ciotole","dur":29,"root":"C","cents":-23.8,"note":["C","B","F#"],"da":"s-light"},{"id":"s031","nome":"E flat Tibetan singing bowl struck","fam":"ciotole","dur":13,"root":"D#","cents":-49,"note":["D#","A"],"da":"mttvn"},{"id":"s032","nome":"Tibetan singing bowl 1","fam":"ciotole","dur":23,"root":"D","cents":34.2,"note":["D","C#","A"],"da":"itinerantmonk108"},{"id":"s033","nome":"Humming in A Minor","fam":"coro","dur":11,"root":"A","cents":-6.9,"note":["A","C","E"],"da":"xkeril"},{"id":"s034","nome":"Humming in F Minor","fam":"coro","dur":13,"root":"F#","cents":-9.2,"note":["F#","C#","A"],"da":"xkeril"},{"id":"s035","nome":"CRWDSing Mmm Hummed Near F ShaneVincen","fam":"coro","dur":5,"root":"F","cents":-1.6,"note":["F"],"da":"ShangusBurger"},{"id":"s036","nome":"CRWDSing Mmm Hummed Near F ShaneVincen","fam":"coro","dur":5,"root":"F","cents":1.4,"note":["F"],"da":"ShangusBurger"},{"id":"s037","nome":"CRWDSing Mmm Hummed Near F ShaneVincen","fam":"coro","dur":5,"root":"F","cents":1.7,"note":["F"],"da":"ShangusBurger"},{"id":"s038","nome":"CRWDSing Mmm Hummed Near F ShaneVincen","fam":"coro","dur":5,"root":"F","cents":6.5,"note":["F"],"da":"ShangusBurger"},{"id":"s039","nome":"CRWDSing Mmm Hummed Near F ShaneVincen","fam":"coro","dur":5,"root":"F","cents":-0.6,"note":["F"],"da":"ShangusBurger"},{"id":"s040","nome":"Choir Hum Loop for Game Loot","fam":"coro","dur":3,"root":"A#","cents":2,"note":["A#","C#"],"da":"armandem"},{"id":"s041","nome":"Cymbal Drone Close Mic 1","fam":"drone","dur":29,"root":"F#","cents":-2.5,"note":["F#","D#"],"da":"RutgerMuller"},{"id":"s042","nome":"Cymbal Drone Close Mic 4","fam":"drone","dur":23,"root":"G#","cents":2.7,"note":["G#","A","E"],"da":"RutgerMuller"},{"id":"s043","nome":"Wine Glass Sustained Note F5","fam":"drone","dur":29,"root":"F#","cents":-1,"note":["F#"],"da":"spectral9"},{"id":"s045","nome":"Cinematic Monster Drone in C","fam":"drone","dur":23,"root":"C","cents":2,"note":["C","G"],"da":"EphJayMusic"},{"id":"s048","nome":"Resonating Ambient Drone with Distant ","fam":"drone","dur":29,"root":"C","cents":3.8,"note":["C"],"da":"bassimat"},{"id":"s050","nome":"Bowed 28","fam":"metallo","dur":5,"root":"G","cents":-7.7,"note":["G","A"],"da":"soundjoao"},{"id":"s051","nome":"Bowed Mini China 02","fam":"metallo","dur":5,"root":"A","cents":-15.9,"note":["A"],"da":"soundjoao"},{"id":"s052","nome":"drone6 bowed cymbal1","fam":"metallo","dur":3,"root":"D#","cents":7.1,"note":["D#"],"da":"decembered"},{"id":"s053","nome":"drone8 bowed cymbal2","fam":"metallo","dur":7,"root":"G#","cents":22.4,"note":["G#","D#"],"da":"decembered"},{"id":"s054","nome":"drone7 bowed cymbal3","fam":"metallo","dur":7,"root":"D#","cents":6.6,"note":["D#","A#"],"da":"decembered"},{"id":"s055","nome":"Rubbing Metal 01","fam":"metallo","dur":3,"root":"C","cents":-39.7,"note":["C","B","C#","G"],"da":"Aerotek"},{"id":"s056","nome":"Coffee Can Horror 1","fam":"metallo","dur":7,"root":"A#","cents":-10.9,"note":["A#","A","C#","B"],"da":"Spoodlesby"},{"id":"s058","nome":"Mystery dream vocal chord","fam":"organo","dur":5,"root":"E","cents":6.5,"note":["E","B","A"],"da":"skylarjulian"},{"id":"s059","nome":"organ chord 120 bpm","fam":"organo","dur":7,"root":"A#","cents":-2,"note":["A#","F","C","D"],"da":"solarpsychedelic"},{"id":"s060","nome":"Shruti Box","fam":"shruti","dur":7,"root":"C","cents":15.1,"note":["C","G"],"da":"iluppai"},{"id":"s061","nome":"Tanpura in E","fam":"tanpura","dur":17,"root":"E","cents":-31,"note":["E","C#","B","G#"],"da":"iluppai"},{"id":"s064","nome":"Tanpura High and Low C sharp","fam":"tanpura","dur":5,"root":"C#","cents":-3.4,"note":["C#","D#","G#","F"],"da":"luckylittleraven"},{"id":"s066","nome":"Tanpura note C sharp","fam":"tanpura","dur":5,"root":"C#","cents":-5.8,"note":["C#","D#","G#"],"da":"luckylittleraven"},{"id":"s068","nome":"tanpura drone2","fam":"tanpura","dur":19,"root":"D","cents":-27.6,"note":["D","A","F#"],"da":"MieliTietty"},{"id":"s069","nome":"Waterfall 10 Sec","fam":"texture","dur":7,"root":null,"cents":0,"note":[],"da":"LilMati"},{"id":"s073","nome":"Looping Rain On Skylight Foley Texture","fam":"texture","dur":17,"root":null,"cents":0,"note":[],"da":"deadrobotmusic"},{"id":"s074","nome":"Rain on window","fam":"texture","dur":29,"root":null,"cents":0,"note":[],"da":"Nickisawsome74"},{"id":"s077","nome":"Wine Glass RingingSinging","fam":"vetro","dur":17,"root":"A","cents":25.2,"note":["A","C","F#"],"da":"BJCurlee"},{"id":"s078","nome":"glass singing wine glass full 02","fam":"vetro","dur":3,"root":"D#","cents":-4.7,"note":["D#"],"da":"Anthousai"},{"id":"s079","nome":"glass singing wine glass full 01","fam":"vetro","dur":3,"root":"D#","cents":-6.1,"note":["D#"],"da":"Anthousai"},{"id":"s080","nome":"glass singing wine glass full 04","fam":"vetro","dur":3,"root":"D#","cents":-3.8,"note":["D#"],"da":"Anthousai"},{"id":"s081","nome":"glass singing wine glass full 03","fam":"vetro","dur":3,"root":"D#","cents":-1.5,"note":["D#"],"da":"Anthousai"},{"id":"s082","nome":"glass singing wine glass half full 0","fam":"vetro","dur":3,"root":"A","cents":14.1,"note":["A"],"da":"Anthousai"},{"id":"s083","nome":"glass singing wine glass squeaking n","fam":"vetro","dur":3,"root":"G","cents":28.1,"note":["G","D"],"da":"Anthousai"},{"id":"s084","nome":"glass singing wine glass half full 0","fam":"vetro","dur":7,"root":"A","cents":15.1,"note":["A"],"da":"Anthousai"},{"id":"s098","nome":"Birds BoatInBackground","fam":"giappone","dur":5,"root":null,"cents":0,"note":[],"da":"freetousesounds"},{"id":"s101","nome":"Calming Ocean Waves on Beach EastC","fam":"giappone","dur":23,"root":null,"cents":0,"note":[],"da":"freetousesounds"},{"id":"s107","nome":"Forest Walking Leaves Birds Crows","fam":"giappone","dur":7,"root":null,"cents":0,"note":[],"da":"freetousesounds"},{"id":"s133","nome":"River WaterFlowing","fam":"giappone","dur":29,"root":null,"cents":0,"note":[],"da":"freetousesounds"},{"id":"s134","nome":"Stony River Strong Flowing","fam":"giappone","dur":17,"root":null,"cents":0,"note":[],"da":"freetousesounds"},{"id":"s159","nome":"Tokyo Asakusa Temple Shaking The B","fam":"giappone","dur":29,"root":null,"cents":0,"note":[],"da":"freetousesounds"},{"id":"s160","nome":"Tokyo Asakusa Walk To The Temple","fam":"giappone","dur":29,"root":null,"cents":0,"note":[],"da":"freetousesounds"},{"id":"g01","nome":"drone armonici","fam":"generati","dur":23,"root":"D","cents":0,"note":["D","A"],"da":"claude"},{"id":"g02","nome":"tanpura ombra","fam":"generati","dur":5,"root":"D","cents":0,"note":["D","A"],"da":"claude"},{"id":"g03","nome":"campane","fam":"generati","dur":13,"root":"D","cents":0,"note":["D","E","G","A","B"],"da":"claude"},{"id":"g04","nome":"frase dorica","fam":"generati","dur":11,"root":"D","cents":0,"note":["D","E","F","G","A","B","C"],"da":"claude"},{"id":"g05","nome":"coro","fam":"generati","dur":17,"root":"D","cents":0,"note":["D","A","E"],"da":"claude"},{"id":"g06","nome":"metallo archetto","fam":"generati","dur":19,"root":"D","cents":0,"note":["D"],"da":"claude"},{"id":"g07","nome":"vento","fam":"generati","dur":29,"root":null,"cents":0,"note":[],"da":"claude"},{"id":"g08","nome":"organo povero","fam":"generati","dur":7,"root":"D","cents":0,"note":["D","A","G"],"da":"claude"},{"id":"g09","nome":"armonici fischiati","fam":"generati","dur":31,"root":"D","cents":0,"note":["D","E","F#","A","C"],"da":"claude"}];
+const PC = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const IT = ["DO","DO♯","RE","MI♭","MI","FA","FA♯","SOL","LA♭","LA","SI♭","SI"];
+const PCI = Object.fromEntries(PC.map((n,i)=>[n,i]));
+const SCALES = { libero:null, minore:[0,2,3,5,7,8,10], dorico:[0,2,3,5,7,9,10], lidio:[0,2,4,6,7,9,11], misolidio:[0,2,4,5,7,9,10], penta:[0,2,4,7,9], pentam:[0,3,5,7,10] };
+const MODE_IT = { libero:"", minore:"minore", dorico:"dorico", lidio:"lidio", misolidio:"misolidio", penta:"pentatonica", pentam:"pentatonica minore" };
+const MODE_BAG = ["libero","libero","libero","dorico","dorico","pentam","pentam","penta","minore","misolidio","lidio"];
+const byId = Object.fromEntries(CAT.map(c=>[c.id,c]));
+const state = { tonic: 2, mode: "libero", age: .3, on: false };
+
+/* il caso, con criterio: ogni orbita ha un ruolo e pesca solo dove ha senso */
+const AIR = /\b(river|waves?|ocean|forest|birds?|temple|rain|waterfall|water\w*|fishing)\b/i, NOT_AIR = /traffic|train|screw|engine|truck/i;
+const ROLES = [
+  {vol:[.6,.72], pool:c=>c.root&&c.dur>=5&&(["drone","tanpura","shruti","armonium"].includes(c.fam)||["g01","g02","g09","g10"].includes(c.id)), oct:c=>["drone","armonium"].includes(c.fam)&&Math.random()<.4?-1:0},
+  {vol:[.4,.55], pool:c=>c.root&&c.dur>=5&&(["coro","organo","vetro","ambient"].includes(c.fam)||["g05","g06","g08"].includes(c.id))},
+  {vol:[.35,.5], pool:c=>c.root&&(["campane","ciotole"].includes(c.fam)||["g03","g04"].includes(c.id))},
+  {vol:[.2,.32], pool:c=>!c.root&&(c.id==="g07"||((c.fam==="giappone"||c.fam==="texture")&&AIR.test(c.nome)&&!NOT_AIR.test(c.nome)))},
+  {vol:[.25,.35], off:.5, pool:c=>c.root&&["metallo","vetro","campane","ciotole","coro","armonium"].includes(c.fam), oct:()=>Math.random()<.5?1:0},
+];
+const boxes = ROLES.map(r=>({role:r,id:"g01",vol:.5,oct:0,muted:false,phase:Math.random(),voice:null,out:null}));
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const pickOne=a=>a[Math.floor(Math.random()*a.length)];
+
+function semiFor(it){ if(!it.root) return 0; let s=(state.tonic-PCI[it.root]+12)%12; if(s>6) s-=12; return s; }
+function rateFor(it,b){ const o=Math.pow(2,b.oct); if(!it.root) return o; return Math.pow(2,(semiFor(it)-(it.cents||0)/100)/12)*o; }
+function compatible(it){
+  const sc=SCALES[state.mode]; if(!sc||!it.root) return true;
+  const s=semiFor(it);
+  return it.note.every(n=>sc.includes(((PCI[n]+s-state.tonic)%12+24)%12));
+}
+function pickFor(b,taken){
+  let pool=CAT.filter(c=>b.role.pool(c)&&compatible(c)&&!taken.has(c.id));
+  if(!pool.length) pool=CAT.filter(c=>c.root&&compatible(c)&&!taken.has(c.id));
+  const c=pickOne(pool); b.id=c.id; b.oct=b.role.oct?b.role.oct(c):0;
+}
+
+
+/* ---------- audio ---------- */
+let ctx=null, bus, shaper, hp, peak, lp, wowG, flutG, hissG;
+const bufs=new Map();
+function initAudio(){
+  ctx=new (window.AudioContext||window.webkitAudioContext)();
+  bus=ctx.createGain();
+  shaper=ctx.createWaveShaper(); shaper.oversample="2x";
+  hp=ctx.createBiquadFilter(); hp.type="highpass";
+  peak=ctx.createBiquadFilter(); peak.type="peaking"; peak.frequency.value=1300; peak.Q.value=1.2;
+  lp=ctx.createBiquadFilter(); lp.type="lowpass"; lp.Q.value=.5;
+  const comp=ctx.createDynamicsCompressor(); comp.threshold.value=-14; comp.ratio.value=3;
+  const master=ctx.createGain(); master.gain.value=.9;
+  /* tutto passa da un filtro passa-basso che respira, poi una parte va in un riverbero lungo e scuro */
+  bus.connect(shaper).connect(hp).connect(peak).connect(lp);
+  const dry=ctx.createGain(); dry.gain.value=.72;
+  const pre=ctx.createDelay(.2); pre.delayTime.value=.035;
+  const verb=ctx.createConvolver(); verb.buffer=makeIR(6.5);
+  const wet=ctx.createGain(); wet.gain.value=.55;
+  lp.connect(dry).connect(comp);
+  lp.connect(pre).connect(verb).connect(wet).connect(comp);
+  comp.connect(master).connect(ctx.destination);
+  const sweep=ctx.createOscillator(); sweep.frequency.value=1/97;
+  const sweepG=ctx.createGain(); sweepG.gain.value=700;   // ±700 cent sul taglio, un giro ogni 97 s
+  sweep.connect(sweepG).connect(lp.detune); sweep.start();
+  const wow=ctx.createOscillator(); wow.frequency.value=.55; wowG=ctx.createGain(); wow.connect(wowG); wow.start();
+  const flut=ctx.createOscillator(); flut.frequency.value=7.3; flutG=ctx.createGain(); flut.connect(flutG); flut.start();
+  const n=ctx.sampleRate*3, nb=ctx.createBuffer(1,n,ctx.sampleRate), d=nb.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+  const hs=ctx.createBufferSource(); hs.buffer=nb; hs.loop=true;
+  const hf=ctx.createBiquadFilter(); hf.type="bandpass"; hf.frequency.value=4000; hf.Q.value=.6;
+  hissG=ctx.createGain(); hs.connect(hf).connect(hissG).connect(lp); hs.start();
+  const bed=ctx.createBufferSource(); bed.buffer=brownNoise(4); bed.loop=true;
+  const bedF=ctx.createBiquadFilter(); bedF.type="lowpass"; bedF.frequency.value=900;
+  const bedG=ctx.createGain(); bedG.gain.value=.05;
+  bed.connect(bedF).connect(bedG).connect(lp); bed.start();
+  boxes.forEach((b,i)=>{ b.out=ctx.createGain(); b.out.gain.value=b.muted?0:b.vol*b.vol; b.swell=ctx.createGain(); b.out.connect(b.swell).connect(bus); setSwell(b,i); });
+  setInterval(evolve,4000);
+  applyAge();
+}
+function applyAge(){
+  if(!ctx) return;
+  const e=state.age, t=ctx.currentTime, k=e*7, c=new Float32Array(1024);
+  for(let i=0;i<1024;i++){ const x=i/511.5-1; c[i]=k<.01?x:Math.tanh(k*x)/Math.tanh(k); }
+  shaper.curve=c;
+  hp.frequency.setTargetAtTime(30+e*330,t,.1);
+  lp.frequency.setTargetAtTime(4200*Math.pow(1700/4200,e),t,.1);
+  peak.gain.setTargetAtTime(e*7,t,.1);
+  wowG.gain.setTargetAtTime(e*28,t,.1);
+  flutG.gain.setTargetAtTime(e*7,t,.1);
+  hissG.gain.setTargetAtTime(.006+e*.02,t,.1);
+}
+async function getBuf(id){
+  if(bufs.has(id)) return bufs.get(id);
+  const p=fetch("suoni/"+id+".wav").then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(a=>ctx.decodeAudioData(a));
+  bufs.set(id,p);
+  try { return await p; } catch(e){ bufs.delete(id); throw e; }
+}
+function stopVoice(v,fade=.8){
+  if(!v) return; const t=ctx.currentTime;
+  v.g.gain.cancelScheduledValues(t); v.g.gain.setValueAtTime(v.g.gain.value,t); v.g.gain.linearRampToValueAtTime(0,t+fade);
+  try{ v.src.stop(t+fade+.05); }catch(e){}
+}
+async function playBox(b){
+  if(!ctx||!state.on) return;
+  const id=b.id;
+  let buf; try{ buf=await getBuf(id); } catch(err){ return; }
+  if(b.id!==id||!state.on) return;
+  startVoice(b,buf,ctx.currentTime+.02);
+}
+function startVoice(b,buf,at,fadeIn=.25,fadeOut=.8){
+  const src=ctx.createBufferSource(); src.buffer=buf; src.loop=true;
+  src.playbackRate.value=rateFor(byId[b.id],b);
+  wowG.connect(src.detune); flutG.connect(src.detune);
+  const g=ctx.createGain(); g.gain.value=0; src.connect(g).connect(b.out);
+  src.start(at,0);
+  g.gain.setValueAtTime(0,at); g.gain.linearRampToValueAtTime(1,at+fadeIn);
+  stopVoice(b.voice,fadeOut);
+  b.voice={src,g,buf,id:b.id,at}; b.phase=0;
+}
+/* tutti insieme dal porto: si caricano i suoni, poi partono nello stesso istante */
+async function playAll(){
+  if(!ctx||!state.on) return;
+  const ids=boxes.map(b=>b.id);
+  let bs; try{ bs=await Promise.all(ids.map(getBuf)); } catch(err){ boxes.forEach(b=>playBox(b)); return; }
+  if(!state.on||boxes.some((b,i)=>b.id!==ids[i])) return;
+  const at=ctx.currentTime+.08;
+  boxes.forEach((b,i)=>startVoice(b,bs[i],at));
+}
+function setVol(b){ if(b.out) b.out.gain.setTargetAtTime(b.muted?0:b.vol*b.vol,ctx.currentTime,.1); }
+
+
+/* respiro: ogni scatola sale e scende di volume con un suo LFO lentissimo, sfasato dagli altri */
+const SWELL=[{P:83,min:.4},{P:61,min:.12},{P:47,min:.15},{P:71,min:.25},{P:37,min:.05}];
+function setSwell(b,i){
+  const s=SWELL[i], P=s.P*rnd(.85,1.15), phi=Math.random()*Math.PI*2;
+  const c=(1+s.min)/2, d=(1-s.min)/2, t=ctx.currentTime;
+  const wave=ctx.createPeriodicWave(new Float32Array([0,Math.sin(phi)]),new Float32Array([0,Math.cos(phi)]),{disableNormalization:true});
+  const osc=ctx.createOscillator(); osc.setPeriodicWave(wave); osc.frequency.value=1/P;
+  const dg=ctx.createGain(); dg.gain.value=d;
+  b.swell.gain.cancelScheduledValues(t); b.swell.gain.setValueAtTime(c,t);
+  osc.connect(dg).connect(b.swell.gain); osc.start(t);
+  if(b.lfo){ const old=b.lfo; old.dg.gain.setTargetAtTime(0,t,2); setTimeout(()=>{ try{old.osc.stop()}catch(e){} },12000); }
+  b.lfo={osc,dg,P,phi,c,d,t0:t};
+}
+function swellNow(b){
+  if(!ctx||!b.lfo) return 1;
+  const L=b.lfo; return L.c+L.d*Math.sin(2*Math.PI*(ctx.currentTime-L.t0)/L.P+L.phi);
+}
+/* evoluzione: ogni due o tre minuti una scatola cambia suono, quando sta respirando piano;
+   ogni tanto l'ospite entra o esce, e l'eta' del suono si sposta di poco */
+let nextEvolve=null;
+function evolve(){
+  if(!ctx||!state.on) { nextEvolve=null; return; }
+  const now=ctx.currentTime;
+  if(nextEvolve===null){ nextEvolve=now+rnd(90,150); return; }
+  if(now<nextEvolve) return;
+  nextEvolve=now+rnd(100,190);
+  state.age=Math.min(.5,Math.max(.1,state.age+rnd(-.06,.06))); applyAge();
+  const guest=boxes[4];
+  if(Math.random()<.3){ guest.muted=!guest.muted; guest.out.gain.setTargetAtTime(guest.muted?0:guest.vol*guest.vol,now,4); return; }
+  const live=boxes.filter(b=>!b.muted);
+  const b=live.reduce((a,x)=>swellNow(x)<swellNow(a)?x:a,live[0]);
+  const taken=new Set(boxes.map(x=>x.id)); pickFor(b,taken);
+  const id=b.id;
+  getBuf(id).then(buf=>{ if(b.id===id&&state.on) startVoice(b,buf,ctx.currentTime+.05,10,10); }).catch(()=>{});
+}
+
+/* risposta all'impulso sintetica: rumore che decade, sempre piu' scuro col passare del tempo */
+function makeIR(sec){
+  const sr=ctx.sampleRate, n=Math.floor(sec*sr), ir=ctx.createBuffer(2,n,sr);
+  for(let ch=0;ch<2;ch++){
+    const d=ir.getChannelData(ch); let y=0;
+    for(let i=0;i<n;i++){
+      const t=i/sr, a=0.55*Math.exp(-t/1.1)+0.03;
+      y+=a*((Math.random()*2-1)-y);
+      d[i]=y*Math.exp(-t/1.05)*(t<0.012?t/0.012:1);
+    }
+  }
+  return ir;
+}
+/* rumore marrone: il soffio grave di un nastro o di una stanza */
+function brownNoise(sec){
+  const n=Math.floor(sec*ctx.sampleRate), b=ctx.createBuffer(1,n,ctx.sampleRate), d=b.getChannelData(0); let y=0;
+  for(let i=0;i<n;i++){ y=(y+0.02*(Math.random()*2-1))/1.02; d[i]=y*3.5; }
+  const jump=d[n-1]-d[0]; for(let i=0;i<n;i++) d[i]-=jump*i/(n-1);   // fine e inizio coincidono: loop senza scatto
+  return b;
+}
+
+/* ---------- controls ---------- */
+const $=s=>document.querySelector(s);
+const NAMES=["C","C♯","D","E♭","E","F","F♯","G","A♭","A","B♭","B"];
+const MODE_EN={libero:"",minore:"minor",dorico:"dorian",lidio:"lydian",misolidio:"mixolydian",penta:"major pentatonic",pentam:"minor pentatonic"};
+const stage=$("#stage");
+NAMES.forEach((n,i)=>{
+  const b=document.createElement("button"); b.className="note"; b.id="n"+i; b.textContent=n;
+  b.setAttribute("aria-label","Key of "+n);
+  const a=-Math.PI/2+i*Math.PI/6;
+  b.style.left=(50+Math.cos(a)*44)+"%"; b.style.top=(50+Math.sin(a)*44)+"%";
+  b.onclick=()=>setTonic(i);
+  stage.append(b);
+});
+function showKey(){
+  document.querySelectorAll(".note").forEach((x,j)=>x.setAttribute("aria-pressed",j===state.tonic));
+  $("#nowA").textContent=NAMES[state.tonic].toLowerCase();
+  $("#nowB").textContent=MODE_EN[state.mode]||"free";
+}
+function setTonic(i){
+  state.tonic=i;
+  const taken=new Set(boxes.map(b=>b.id));
+  boxes.forEach(b=>{
+    if(!compatible(byId[b.id])){ taken.delete(b.id); pickFor(b,taken); taken.add(b.id); playBox(b); }
+    else if(b.voice) b.voice.src.playbackRate.setTargetAtTime(rateFor(byId[b.voice.id],b),ctx.currentTime,.15);
+  });
+  showKey();
+}
+function gira(){
+  state.mode=pickOne(MODE_BAG);
+  state.age=Math.round(rnd(.15,.45)*100)/100;
+  const taken=new Set();
+  boxes.forEach(b=>{
+    pickFor(b,taken); taken.add(b.id);
+    b.vol=rnd(...b.role.vol);
+    b.muted=!!b.role.off&&Math.random()<b.role.off;
+    setVol(b);
+    if(ctx&&b.swell) setSwell(b,boxes.indexOf(b));
+  });
+  playAll(); applyAge(); showKey();
+  const g=$("#gira"); g.classList.add("spun"); setTimeout(()=>g.classList.remove("spun"),400);
+}
+gira();
+$("#gira").onclick=gira;
+async function toggle(){
+  if(!ctx) initAudio();
+  if(ctx.state==="suspended") await ctx.resume();
+  state.on=!state.on;
+  $("#play").setAttribute("aria-pressed",state.on); $("#play").setAttribute("aria-label",state.on?"Stop":"Play");
+  if(state.on) playAll(); else boxes.forEach(b=>{ stopVoice(b.voice,1); b.voice=null; });
+}
+$("#play").onclick=toggle;
+$("#cv").onclick=toggle;
+
+/* ---------- the rings ---------- */
+const cv=$("#cv"), c2=cv.getContext("2d");
+function size(){ const r=cv.getBoundingClientRect(), d=devicePixelRatio||1; cv.width=Math.round(r.width*d); cv.height=Math.round(r.height*d); }
+addEventListener("resize",size); size();
+const RAD=[0.37,0.32,0.27,0.22,0.17];
+let last=performance.now();
+function draw(now){
+  const dt=Math.min(.1,(now-last)/1000); last=now;
+  const W=cv.width,H=cv.height,cs=getComputedStyle(document.documentElement),C=k=>cs.getPropertyValue(k).trim();
+  const ink=C("--ink"),mute=C("--mute"),line=C("--line"),amber=C("--amber"),wine=C("--wine");
+  const cx=W/2,cy=H/2,U=Math.min(W,H),dpr=devicePixelRatio||1, on=state.on;
+  c2.clearRect(0,0,W,H);
+  // rim: twelve ticks, the key marked in wine
+  for(let j=0;j<12;j++){ const th=-Math.PI/2+j*Math.PI/6, R=U*0.41;
+    c2.beginPath(); c2.arc(cx+Math.cos(th)*R,cy+Math.sin(th)*R,(j===state.tonic?2.6:1.4)*dpr,0,7);
+    c2.fillStyle=j===state.tonic?wine:line; c2.fill(); }
+  boxes.forEach((b,i)=>{
+    if(b.voice&&on&&ctx.currentTime>=b.voice.at) b.phase=(b.phase+dt*b.voice.src.playbackRate.value/b.voice.buf.duration)%1;
+    const r=U*RAD[i], live=on&&!b.muted, sw=on?swellNow(b):1;
+    c2.strokeStyle=live?ink:line; c2.globalAlpha=live?0.12+0.7*b.vol*sw:1; c2.lineWidth=(i===0?1.6:1)*dpr;
+    c2.setLineDash(b.muted?[2*dpr,5*dpr]:[]);
+    c2.beginPath(); c2.arc(cx,cy,r,0,7); c2.stroke(); c2.setLineDash([]); c2.globalAlpha=1;
+    if(b.muted) return;
+    const a=-Math.PI/2+b.phase*Math.PI*2, len=(0.35+0.8*b.vol)*(on?0.3+0.7*sw:1);
+    c2.strokeStyle=on?amber:mute; c2.globalAlpha=on?1:.35; c2.lineWidth=2*dpr; c2.lineCap="round";
+    c2.beginPath(); c2.arc(cx,cy,r,a-len,a); c2.stroke(); c2.globalAlpha=1;
+  });
+  c2.fillStyle=on?ink:mute; c2.textAlign="center"; c2.textBaseline="middle";
+  c2.font=`300 ${Math.round(U*0.05)}px ${C("--font")}`; c2.fillText(on?"":"tap",cx,cy);
+  if(on){ c2.beginPath(); c2.arc(cx,cy,1.6*dpr,0,7); c2.fillStyle=amber; c2.fill(); }
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+</script>
+<script data-goatcounter="https://phonk.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
